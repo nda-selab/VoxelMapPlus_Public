@@ -118,65 +118,45 @@ void Preprocess::velodyne_handler(
 
     pcl::PointCloud<velodyne_ros::Point> pl_orig;
     pcl::fromROSMsg(*msg, pl_orig);
-    int plsize = pl_orig.points.size();
 
-    float startOri = -atan2(pl_orig.points[0].y, pl_orig.points[0].x);
-    float endOri = -atan2(pl_orig.points[plsize - 1].y,
-                          pl_orig.points[plsize - 1].x) +
-                   2 * M_PI;
-    //激光间距收束到1pi到3pi
-    if (endOri - startOri > 3 * M_PI) {
-        endOri -= 2 * M_PI;
-    } else if (endOri - startOri < M_PI) {
-        endOri += 2 * M_PI;
-    }
-    //过半记录标志
-    bool halfPassed = false;
-    for (int i = 0; i < pl_orig.size(); i++) {
-        PointType added_pt;
-        added_pt.x = pl_orig.points[i].x;
-        added_pt.y = pl_orig.points[i].y;
-        added_pt.z = pl_orig.points[i].z;
-        added_pt.intensity = pl_orig.points[i].intensity;
-        float angle = atan(added_pt.z / sqrt(added_pt.x * added_pt.x +
-                                             added_pt.y * added_pt.y)) *
-                      180 / M_PI;
-        int scanID = 0;
-        if (angle >= -8.83)
-            scanID = int((2 - angle) * 3.0 + 0.5);
-        else
-            scanID = N_SCANS / 2 + int((-8.83 - angle) * 2.0 + 0.5);
+    const int plsize = pl_orig.points.size();
+    pl_surf.reserve(plsize);
 
-        // use [0 50]  > 50 remove outlies
-        if (angle > 2 || angle < -24.33 || scanID > 50 || scanID < 0) {
+    for (int i = 0; i < plsize; i++) {
+        if (i % point_filter_num != 0) {
             continue;
         }
-        float ori = -atan2(added_pt.y, added_pt.x);
-        //根据扫描线是否旋转过半选择与起始位置还是终止位置进行差值计算，从而进行补偿
-        if (!halfPassed) {
-            //确保-pi/2 < ori - startOri < 3*pi/2
-            if (ori < startOri - M_PI / 2) {
-                ori += 2 * M_PI;
-            } else if (ori > startOri + M_PI * 3 / 2) {
-                ori -= 2 * M_PI;
-            }
 
-            if (ori - startOri > M_PI) {
-                halfPassed = true;
-            }
+        const auto &src = pl_orig.points[i];
+
+        if (src.ring >= N_SCANS) {
+            continue;
         }
-            //确保-3*pi/2 < ori - endOri < pi/2
-        else {
-            ori += 2 * M_PI;
-            if (ori < endOri - M_PI * 3 / 2) {
-                ori += 2 * M_PI;
-            } else if (ori > endOri + M_PI / 2) {
-                ori -= 2 * M_PI;
-            }
+
+        if (!std::isfinite(src.x) ||
+            !std::isfinite(src.y) ||
+            !std::isfinite(src.z)) {
+            continue;
         }
-        //看看旋转多少了，记录比例relTime
-        // float relTime = (ori - startOri) / (endOri - startOri);
-        added_pt.curvature = (ori - startOri) / (endOri - startOri) * 100.00;
+
+        const double range2 =
+            src.x * src.x +
+            src.y * src.y +
+            src.z * src.z;
+
+        if (range2 < blind * blind) {
+            continue;
+        }
+
+        PointType added_pt;
+        added_pt.x = src.x;
+        added_pt.y = src.y;
+        added_pt.z = src.z;
+        added_pt.intensity = src.intensity;
+
+        // time [s] -> curvature [ms]
+        added_pt.curvature = src.time * 1000.0f;
+
         pl_surf.push_back(added_pt);
     }
 }
