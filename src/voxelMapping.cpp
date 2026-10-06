@@ -7,6 +7,7 @@
 #include <cv_bridge/cv_bridge.h>
 #include <fstream>
 #include <geometry_msgs/Vector3.h>
+#include <iomanip>
 #include <image_transport/image_transport.h>
 #include <livox_ros_driver/CustomMsg.h>
 #include <math.h>
@@ -22,6 +23,7 @@
 #include <ros/ros.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <so3_math.h>
+#include <sstream>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 #include <tf2_msgs/TFMessage.h>
@@ -402,9 +404,6 @@ int main(int argc, char **argv) {
 
     // visualization params
     nh.param<bool>("visualization/pub_voxel_map", publish_voxel_map, false);
-    std::cout << "publishe_voxel_map:" << publish_voxel_map << std::endl;
-
-
     nh.param<bool>("visualization/pub_point_cloud", publish_point_cloud, true);
     nh.param<int>("visualization/pub_point_cloud_skip", pub_point_cloud_skip, 1);
     nh.param<bool>("visualization/dense_map_enable", dense_map_en, false);
@@ -413,7 +412,49 @@ int main(int argc, char **argv) {
     nh.param<bool>("Result/write_kitti_log", write_kitti_log, false);
     nh.param<string>("Result/result_path", result_path,
                      "/home/ycj/catkin_github/src/VoxelMapPlus/Log/kitt_log.txt");
-    cout << "p_pre->lidar_type " << p_pre->lidar_type << endl;
+
+    // Log the loaded values, including defaults, once before processing starts.
+    const auto format_vector = [](const std::vector<double> &values) {
+        std::ostringstream stream;
+        stream << std::setprecision(10) << "[";
+        for (size_t i = 0; i < values.size(); ++i) {
+            if (i > 0) {
+                stream << ", ";
+            }
+            stream << values[i];
+        }
+        stream << "]";
+        return stream.str();
+    };
+    ROS_INFO_STREAM(std::boolalpha << std::setprecision(10)
+        << "SLAM startup parameters:"
+        << "\n  common/lid_topic: " << lid_topic
+        << "\n  common/imu_topic: " << imu_topic
+        << "\n  noise_model/ranging_cov: " << ranging_cov
+        << "\n  noise_model/angle_cov: " << angle_cov
+        << "\n  noise_model/gyr_cov_scale: " << gyr_cov_scale
+        << "\n  noise_model/acc_cov_scale: " << acc_cov_scale
+        << "\n  imu/imu_en: " << imu_en
+        << "\n  imu/extrinsic_T: " << format_vector(extrinT)
+        << "\n  imu/extrinsic_R: " << format_vector(extrinR)
+        << "\n  mapping/max_iteration: " << NUM_MAX_ITERATIONS
+        << "\n  mapping/max_points_size: " << max_points_size
+        << "\n  mapping/update_size_threshold: " << update_size_threshold
+        << "\n  mapping/sigma_num: " << sigma_num
+        << "\n  mapping/voxel_size: " << voxel_size
+        << "\n  mapping/down_sample_size: " << filter_size_surf_min
+        << "\n  mapping/plannar_threshold: " << planer_threshold
+        << "\n  preprocess/blind: " << p_pre->blind
+        << "\n  preprocess/calib_laser: " << calib_laser
+        << "\n  preprocess/lidar_type: " << p_pre->lidar_type
+        << "\n  preprocess/scan_line: " << p_pre->N_SCANS
+        << "\n  preprocess/point_filter_num: " << p_pre->point_filter_num
+        << "\n  visualization/pub_voxel_map: " << publish_voxel_map
+        << "\n  visualization/pub_point_cloud: " << publish_point_cloud
+        << "\n  visualization/pub_point_cloud_skip: " << pub_point_cloud_skip
+        << "\n  visualization/dense_map_enable: " << dense_map_en
+        << "\n  Result/write_kitti_log: " << write_kitti_log
+        << "\n  Result/result_path: " << result_path);
 
     // 接收Lidar消息
     ros::Subscriber sub_pcl =
