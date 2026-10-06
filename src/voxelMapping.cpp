@@ -271,7 +271,7 @@ bool sync_packages(MeasureGroup &meas) {
 }
 
 void publish_surf_frame_world(const ros::Publisher &pubLaserCloud,
-                              const int point_skip) {
+                              const int point_skip, const ros::Time &stamp) {
     PointCloudXYZI::Ptr laserCloudFullRes(dense_map_en ? surf_feats_undistort
                                                        : feats_down_body);
     int size = laserCloudFullRes->points.size();
@@ -286,14 +286,14 @@ void publish_surf_frame_world(const ros::Publisher &pubLaserCloud,
     }
     sensor_msgs::PointCloud2 laserCloudmsg;
     pcl::toROSMsg(*laserCloudWorldPub, laserCloudmsg);
-    laserCloudmsg.header.stamp =
-            ros::Time::now(); //.fromSec(last_timestamp_lidar);
+    laserCloudmsg.header.stamp = stamp;
     laserCloudmsg.header.frame_id = "camera_init";
     pubLaserCloud.publish(laserCloudmsg);
 }
 
 // publish有效点，Intensity由标准差着色
-void publish_effect(const ros::Publisher &pubLaserCloudEffect) {
+void publish_effect(const ros::Publisher &pubLaserCloudEffect,
+                    const ros::Time &stamp) {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr effect_cloud_world(
             new pcl::PointCloud<pcl::PointXYZRGB>);
     PointCloudXYZI::Ptr laserCloudWorld(new PointCloudXYZI(effct_feat_num, 1));
@@ -315,8 +315,7 @@ void publish_effect(const ros::Publisher &pubLaserCloudEffect) {
 
     sensor_msgs::PointCloud2 laserCloudFullRes3;
     pcl::toROSMsg(*laserCloudWorld, laserCloudFullRes3);
-    laserCloudFullRes3.header.stamp =
-            ros::Time::now(); //.fromSec(last_timestamp_lidar);
+    laserCloudFullRes3.header.stamp = stamp;
     laserCloudFullRes3.header.frame_id = "camera_init";
     pubLaserCloudEffect.publish(laserCloudFullRes3);
 }
@@ -332,11 +331,11 @@ void set_posestamp(T &out) {
     out.orientation.w = geoQuat.w;
 }
 
-void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
+void publish_odometry(const ros::Publisher &pubOdomAftMapped,
+                      const ros::Time &stamp) {
     odomAftMapped.header.frame_id = "camera_init";
     odomAftMapped.child_frame_id = "aft_mapped";
-    odomAftMapped.header.stamp =
-            ros::Time::now(); // ros::Time().fromSec(last_timestamp_lidar);
+    odomAftMapped.header.stamp = stamp;
     set_posestamp(odomAftMapped.pose.pose);
     static tf::TransformBroadcaster br;
     tf::Transform transform;
@@ -353,11 +352,12 @@ void publish_odometry(const ros::Publisher &pubOdomAftMapped) {
     pubOdomAftMapped.publish(odomAftMapped);
 }
 
-void publish_path(const ros::Publisher pubPath) {
+void publish_path(const ros::Publisher pubPath, const ros::Time &stamp) {
     set_posestamp(msg_body_pose.pose);
-    msg_body_pose.header.stamp = ros::Time::now();
+    msg_body_pose.header.stamp = stamp;
     msg_body_pose.header.frame_id = "camera_init";
     path.poses.push_back(msg_body_pose);
+    path.header.stamp = stamp;
     pubPath.publish(path);
 }
 
@@ -477,7 +477,6 @@ int main(int argc, char **argv) {
     ros::Publisher voxel_map_pub =
             nh.advertise<visualization_msgs::MarkerArray>("/planes", 10000);
 
-    path.header.stamp = ros::Time::now();
     path.header.frame_id = "camera_init";
 
     /*** variables definition ***/
@@ -595,6 +594,13 @@ int main(int argc, char **argv) {
                 cout << "FAST-LIO not ready" << endl;
                 continue;
             }
+
+            // UndistortPcl sorts by point time and estimates the pose at this end time.
+            // Use the processed scan, since the latest received scan may be newer.
+            const double scan_end_time = Measures.lidar_beg_time +
+                    surf_feats_undistort->points.back().curvature / double(1000);
+            ros::Time scan_stamp;
+            scan_stamp.fromSec(scan_end_time);
 
             // flg_EKF_inited = !((Measures.lidar_beg_time - first_lidar_time) < INIT_TIME);
             flg_EKF_inited = (Measures.lidar_beg_time - first_lidar_time) < INIT_TIME
@@ -929,15 +935,15 @@ int main(int argc, char **argv) {
                          map_incremental_time + undistort_time + calc_point_cov_time;
 
             if (enable_write && scanIdx % 10 == 0) {
-                foutC << std::fixed << std::setprecision(10) << Measures.lidar_beg_time << " ";
+                foutC << std::fixed << std::setprecision(10) << scan_end_time << " ";
                 foutC << state.pos_end[0] << " " << state.pos_end[1] << " " << state.pos_end[2] << " ";
 
                 foutC << total_time << "  ";
                 foutC << 0 << " " << 0 << " " << 0 << " " << 0 << endl;
             }
             /*** 8. Publish functions:  ***/
-            publish_odometry(pubOdomAftMapped);
-            publish_path(pubPath);
+            publish_odometry(pubOdomAftMapped, scan_stamp);
+            publish_path(pubPath, scan_stamp);
             tf::Transform transform;
             tf::Quaternion q;
             transform.setOrigin(
@@ -950,11 +956,11 @@ int main(int argc, char **argv) {
             TransformLidar(state, p_imu, feats_down_body, world_lidar);
             sensor_msgs::PointCloud2 pub_cloud;
             pcl::toROSMsg(*world_lidar, pub_cloud);
-            pub_cloud.header.stamp =
-                    ros::Time::now(); //.fromSec(last_timestamp_lidar);
+            pub_cloud.header.stamp = scan_stamp;
             pub_cloud.header.frame_id = "camera_init";
             if (publish_point_cloud) {
-                publish_surf_frame_world(pubLaserCloudSurfFull, pub_point_cloud_skip);
+                publish_surf_frame_world(pubLaserCloudSurfFull, pub_point_cloud_skip,
+                                         scan_stamp);
             }
 
             if (scanIdx % 200 == 0) {
@@ -963,7 +969,7 @@ int main(int argc, char **argv) {
                 }
             }
 
-            publish_effect(pubLaserCloudEffect);
+            publish_effect(pubLaserCloudEffect, scan_stamp);
 
             frame_num++;
             mean_raw_points = mean_raw_points * (frame_num - 1) / frame_num +
