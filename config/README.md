@@ -8,7 +8,7 @@
 | `vlp16_multifloor.yaml` | Multi Floor | None |
 
 
-| Section | Variable | Type | Value | Reference |
+| Section | Variable | Type | Value | Reference / Reason |
 |---|---|---|---|---|
 | `common` | `lid_topic` | string | --- | 入力点群トピックに応じて設定 |
 | `common` | `imu_topic` | string | --- | 入力IMUトピックに応じて設定 |
