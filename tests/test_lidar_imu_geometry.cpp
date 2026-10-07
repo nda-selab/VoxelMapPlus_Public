@@ -34,7 +34,7 @@ TEST(LidarImuGeometry, IdentityAndKnownTransform) {
     EXPECT_TRUE(ext.toWorld(point, r, translation).isApprox(r * point + translation, 1e-12));
     ext.set(V3D(1, 2, 3), rotation(M_PI / 2));
     EXPECT_TRUE(ext.toImu(V3D(1, 0, 0)).isApprox(V3D(1, 3, 3), 1e-12));
-    // Published LiDAR pose must map the same cloud as the mapping path.
+    // Composing the LiDAR pose must map the same cloud as the mapping path.
     EXPECT_TRUE(ext.toWorld(point, r, translation).isApprox(
             ext.lidarRotation(r) * point + ext.lidarPosition(r, translation), 1e-12));
 }

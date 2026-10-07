@@ -325,9 +325,9 @@ void publish_effect(const ros::Publisher &pubLaserCloudEffect,
 
 template<typename T>
 void set_posestamp(T &out) {
-    // aft_mapped and all published trajectories describe the LiDAR pose.
-    const V3D position = p_imu->extrinsics.lidarPosition(state.rot_end, state.pos_end);
-    const Eigen::Quaterniond orientation(p_imu->extrinsics.lidarRotation(state.rot_end));
+    // aft_mapped is the IMU frame; odometry, TF and path expose the filter state.
+    const V3D &position = state.pos_end;
+    const Eigen::Quaterniond orientation(state.rot_end);
     out.position.x = position.x();
     out.position.y = position.y();
     out.position.z = position.z();
@@ -508,7 +508,7 @@ int main(int argc, char **argv) {
         ROS_FATAL_STREAM("Invalid LiDAR-to-IMU extrinsics: " << error.what());
         return 1;
     }
-    ROS_INFO("State frame: IMU. Odometry, aft_mapped TF and path: LiDAR pose in camera_init (initial IMU frame).");
+    ROS_INFO("State frame: IMU. Odometry, aft_mapped TF and path: IMU pose in camera_init (initial IMU frame).");
 
     p_imu->set_gyr_cov_scale(V3D(gyr_cov_scale, gyr_cov_scale, gyr_cov_scale));
     p_imu->set_acc_cov_scale(V3D(acc_cov_scale, acc_cov_scale, acc_cov_scale));
@@ -663,7 +663,7 @@ int main(int argc, char **argv) {
                     pubVoxelMap(voxel_map, voxel_map_pub);
                 }
                 init_map = true;
-                position_last = p_imu->extrinsics.lidarPosition(state.rot_end, state.pos_end);
+                position_last = state.pos_end;
                 cout << "Finish First Frame" << endl;
                 continue;
             }
@@ -878,9 +878,8 @@ int main(int argc, char **argv) {
                         G.setZero();
                         G.block<DIM_STATE, 6>(0, 0) = K * Hsub;
                         state.cov = (I_STATE - G) * state.cov;
-                        const V3D lidar_position = p_imu->extrinsics.lidarPosition(state.rot_end, state.pos_end);
-                        total_distance += (lidar_position - position_last).norm();
-                        position_last = lidar_position;
+                        total_distance += (state.pos_end - position_last).norm();
+                        position_last = state.pos_end;
 
                         VD(DIM_STATE) K_sum = K.rowwise().sum();
                         VD(DIM_STATE) P_diag = state.cov.diagonal();
@@ -935,8 +934,7 @@ int main(int argc, char **argv) {
 
             if (enable_write && scanIdx % 10 == 0) {
                 foutC << std::fixed << std::setprecision(10) << scan_end_time << " ";
-                const V3D lidar_position = p_imu->extrinsics.lidarPosition(state.rot_end, state.pos_end);
-                foutC << lidar_position.x() << " " << lidar_position.y() << " " << lidar_position.z() << " ";
+                foutC << state.pos_end.x() << " " << state.pos_end.y() << " " << state.pos_end.z() << " ";
 
                 foutC << total_time << "  ";
                 foutC << 0 << " " << 0 << " " << 0 << " " << 0 << endl;

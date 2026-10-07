@@ -28,15 +28,16 @@ p_W = R_WI * (R_IL * p_L + t_IL) + t_WI
 
 - `camera_init`: 初期IMU座標を基準にする世界座標系。
 - `/aft_mapped_to_init`、`camera_init -> aft_mapped`のTF、`/path`:
-  世界座標系におけるLiDARの姿勢・位置。
+  世界座標系におけるIMUの姿勢・位置。`aft_mapped`はIMU座標系です。
+  推定状態の`rot_end`、`pos_end`をそのまま使用し、移動距離・診断用位置ログもIMU基準です。
 - `/cloud_registered_surf`、`/cloud_effected`、ボクセル地図:
   同じ世界座標系に変換した点群・地図。
 - KITTIログ: LiDAR姿勢を初期LiDAR座標に変換後、既存のKITTI用カメラ変換を適用。
   このカメラ変換はKITTI固有で、VLP-16用の一般的なカメラ校正ではありません。
 
-内部IMU状態が単位姿勢・原点でも、LiDARの出力姿勢・位置は外部パラメータ分の
-回転・並進を持ちます。既存の評価処理がIMUの軌跡を期待する場合は、比較対象の
-センサー座標系を揃えてください。
+オドメトリの基準点と点群の入力座標系は別です。オドメトリをIMU基準にしても、
+点群の世界座標変換には`R_IL`と`t_IL`が必要です。LiDARの姿勢が必要な場合は、
+`R_WL = R_WI * R_IL`、`t_WL = t_WI + R_WI * t_IL`で求めます。
 
 ## 回転行列の検証
 
