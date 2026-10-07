@@ -564,7 +564,7 @@ void TransformLidar(const StatesGroup &state,
     for (size_t i = 0; i < input_cloud->size(); i++) {
         pcl::PointXYZINormal p_c = input_cloud->points[i];
         V3D p(p_c.x, p_c.y, p_c.z);
-        p = state.rot_end * p + state.pos_end;
+        p = p_imu->extrinsics.toWorld(p, state.rot_end, state.pos_end);
         pcl::PointXYZI pi;
         pi.x = static_cast<float>(p(0));
         pi.y = static_cast<float>(p(1));

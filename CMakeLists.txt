@@ -90,7 +90,15 @@ catkin_package(
 )
 
 add_executable(voxel_mapping_plus_odom src/voxelMapping.cpp src/preprocess.cpp)
+add_dependencies(voxel_mapping_plus_odom ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(voxel_mapping_plus_odom ${catkin_LIBRARIES} ${PCL_LIBRARIES})
 target_include_directories(voxel_mapping_plus_odom PRIVATE ${PYTHON_INCLUDE_DIRS})
 
+if(CATKIN_ENABLE_TESTING)
+    catkin_add_gtest(test_lidar_imu_geometry tests/test_lidar_imu_geometry.cpp)
+    if(TARGET test_lidar_imu_geometry)
+        add_dependencies(test_lidar_imu_geometry ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+        target_link_libraries(test_lidar_imu_geometry ${catkin_LIBRARIES} ${PCL_LIBRARIES})
+    endif()
+endif()
 

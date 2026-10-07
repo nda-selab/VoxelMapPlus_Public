@@ -43,7 +43,6 @@ M3D Eye3d(M3D::Identity());
 M3F Eye3f(M3F::Identity());
 V3D Zero3d(0, 0, 0);
 V3F Zero3f(0, 0, 0);
-Vector3d Lidar_offset_to_IMU(0, 0, 0);
 
 struct MeasureGroup // Lidar data and imu dates for the curent process
 {
@@ -128,10 +127,9 @@ struct StatesGroup {
         this->vel_end = Zero3d;
     }
 
-    M3D rot_end; // the estimated attitude (rotation matrix) at the end lidar
-    // point
-    V3D pos_end; // the estimated position at the end lidar point (world frame)
-    V3D vel_end; // the estimated velocity at the end lidar point (world frame)
+    M3D rot_end; // IMU -> world attitude at the scan end
+    V3D pos_end; // IMU origin in world coordinates at the scan end
+    V3D vel_end; // IMU velocity in world coordinates at the scan end
     V3D bias_g;  // gyroscope bias
     V3D bias_a;  // accelerator bias
     V3D gravity; // the estimated gravity acceleration

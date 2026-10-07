@@ -1,6 +1,7 @@
 #include <Eigen/Eigen>
 #include <cmath>
 #include <common_lib.h>
+#include <lidar_imu_geometry.hpp>
 #include <condition_variable>
 #include <csignal>
 #include <deque>
@@ -67,7 +68,6 @@ public:
     void Process(const MeasureGroup &meas, StatesGroup &stat,
                  PointCloudXYZI::Ptr &cur_surf_pcl_un_);
 
-    ros::NodeHandle nh;
     ofstream fout_imu;
     V3D cov_acc;
     V3D cov_gyr;
@@ -75,8 +75,7 @@ public:
     V3D cov_gyr_scale;
     V3D cov_bias_gyr;
     V3D cov_bias_acc;
-    M3D Lid_rot_to_IMU;
-    V3D Lid_offset_to_IMU;
+    voxel_map_plus::LidarImuGeometry extrinsics;
     double first_lidar_time;
     bool imu_en;
     bool is_first_frame = true;
@@ -116,8 +115,6 @@ ImuProcess::ImuProcess()
     mean_acc = V3D(0, 0, -1.0);
     mean_gyr = V3D(0, 0, 0);
     angvel_last = Zero3d;
-    Lid_offset_to_IMU = Zero3d;
-    Lid_rot_to_IMU = Eye3d;
     last_imu_.reset(new sensor_msgs::Imu());
 }
 
@@ -139,8 +136,12 @@ void ImuProcess::Reset() {
 }
 
 void ImuProcess::set_extrinsic(const V3D &transl, const M3D &rot) {
-    Lid_offset_to_IMU = transl;
-    Lid_rot_to_IMU = rot;
+    const double correction = extrinsics.set(transl, rot);
+    if (correction > 1e-6) {
+        ROS_WARN_STREAM("imu/extrinsic_R projected to SO(3); correction norm="
+                        << correction << "\nEffective LiDAR-to-IMU rotation:\n"
+                        << extrinsics.rotation);
+    }
 }
 
 void ImuProcess::set_gyr_cov_scale(const V3D &scaler) {
@@ -285,41 +286,35 @@ void ImuProcess::UndistortPcl(const MeasureGroup &meas,
     state_inout.pos_end =
             pos_imu + note * vel_imu * dt + note * 0.5 * acc_imu * dt * dt;
 
-    auto pos_liD_e =
-            state_inout.pos_end + state_inout.rot_end * Lid_offset_to_IMU;
     /*** undistort each surf lidar point (backward propagation) ***/
-    auto it_surf_pcl = surf_pcl_out.points.end() - 1;
-    for (auto it_kp = IMUpose.end() - 1; it_kp != IMUpose.begin(); it_kp--) {
+    size_t remaining = surf_pcl_out.size();
+    for (auto it_kp = IMUpose.end() - 1;
+         it_kp != IMUpose.begin() && remaining > 0; --it_kp) {
         auto head = it_kp - 1;
         auto tail = it_kp;
         R_imu << MAT_FROM_ARRAY(head->rot);
-        acc_imu << VEC_FROM_ARRAY(head->acc);
+        // Integration stores each interval's acceleration/angular velocity on
+        // its tail pose; interpolate from the head pose using those values.
+        acc_imu << VEC_FROM_ARRAY(tail->acc);
         // cout<<"head imu acc: "<<acc_imu.transpose()<<endl;
         vel_imu << VEC_FROM_ARRAY(head->vel);
         pos_imu << VEC_FROM_ARRAY(head->pos);
-        angvel_avr << VEC_FROM_ARRAY(head->gyr);
+        angvel_avr << VEC_FROM_ARRAY(tail->gyr);
 
-        for (; it_surf_pcl->curvature / double(1000) > head->offset_time; it_surf_pcl--) {
-            dt = it_surf_pcl->curvature / double(1000) - head->offset_time;
-            /* Transform to the 'end' frame, using only the rotation
-             * Note: Compensation direction is INVERSE of Frame's moving direction
-             * So if we want to compensate a point at timestamp-i to the frame-e
-             * P_compensate = R_imu_e ^ T * (R_i * P_i + T_ei) where T_ei is
-             * represented in global frame */
+        // Include time-zero points and visit every point exactly once.
+        while (remaining > 0 &&
+               surf_pcl_out.points[remaining - 1].curvature / 1000.0 >= head->offset_time) {
+            auto &point = surf_pcl_out.points[remaining - 1];
+            dt = point.curvature / 1000.0 - head->offset_time;
             M3D R_i(R_imu * Exp(angvel_avr, dt));
-            V3D T_ei(pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt +
-                     R_i * Lid_offset_to_IMU - pos_liD_e);
-
-            V3D P_i(it_surf_pcl->x, it_surf_pcl->y, it_surf_pcl->z);
-            V3D P_compensate = state_inout.rot_end.transpose() * (R_i * P_i + T_ei);
-
-            /// save Undistorted points and their rotation
-            it_surf_pcl->x = P_compensate(0);
-            it_surf_pcl->y = P_compensate(1);
-            it_surf_pcl->z = P_compensate(2);
-
-            if (it_surf_pcl == surf_pcl_out.points.begin())
-                break;
+            V3D t_i = pos_imu + vel_imu * dt + 0.5 * acc_imu * dt * dt;
+            const V3D compensated = extrinsics.deskew(
+                    V3D(point.x, point.y, point.z), R_i, t_i,
+                    state_inout.rot_end, state_inout.pos_end);
+            point.x = compensated.x();
+            point.y = compensated.y();
+            point.z = compensated.z();
+            --remaining;
         }
     }
 }
