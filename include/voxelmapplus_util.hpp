@@ -617,7 +617,7 @@ void BuildSingleResidual(const pointWithCov &pv, const UnionFindNode *currentNod
         double sigma_l = J_abd * plane.plane_cov * J_abd.transpose();
         sigma_l += J_pw * pv.cov * J_pw.transpose();
         /*** 3 Sigma Outlier Remove ***/
-        if (single_ptpl.dist < sigma_num * sqrt(sigma_l)) {
+        if (std::abs(single_ptpl.dist) < sigma_num * sqrt(sigma_l)) {
             is_sucess = true;
         } else {
             is_sucess = false;
@@ -672,19 +672,19 @@ void BuildResidualListOMP(const unordered_map<VOXEL_LOC, UnionFindNode *> &voxel
             BuildSingleResidual(pv, currentRootNode, is_sucess, single_ptpl);
             if (!is_sucess) {
                 VOXEL_LOC near_position = position;
-                if (loc_xyz[0] > (currentRootNode->voxel_center_[0] + quater_length)) {
+                if (pv.point_world[0] > (iter->second->voxel_center_[0] + quater_length)) {
                     near_position.x = near_position.x + 1;
-                } else if (loc_xyz[0] < (currentRootNode->voxel_center_[0] - quater_length)) {
+                } else if (pv.point_world[0] < (iter->second->voxel_center_[0] - quater_length)) {
                     near_position.x = near_position.x - 1;
                 }
-                if (loc_xyz[1] > (currentRootNode->voxel_center_[1] + quater_length)) {
+                if (pv.point_world[1] > (iter->second->voxel_center_[1] + quater_length)) {
                     near_position.y = near_position.y + 1;
-                } else if (loc_xyz[1] < (currentRootNode->voxel_center_[1] - quater_length)) {
+                } else if (pv.point_world[1] < (iter->second->voxel_center_[1] - quater_length)) {
                     near_position.y = near_position.y - 1;
                 }
-                if (loc_xyz[2] > (currentRootNode->voxel_center_[2] + quater_length)) {
+                if (pv.point_world[2] > (iter->second->voxel_center_[2] + quater_length)) {
                     near_position.z = near_position.z + 1;
-                } else if (loc_xyz[2] < (currentRootNode->voxel_center_[2] - quater_length)) {
+                } else if (pv.point_world[2] < (iter->second->voxel_center_[2] - quater_length)) {
                     near_position.z = near_position.z - 1;
                 }
                 auto iter_near = voxel_map.find(near_position);
