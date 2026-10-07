@@ -790,7 +790,7 @@ void pubSinglePlane(visualization_msgs::MarkerArray &plane_pub,
 /*** Visualization Function ***/
 void pubVoxelMap(const std::unordered_map<VOXEL_LOC, UnionFindNode *> &voxel_map,
                  const ros::Publisher &plane_map_pub) {
-    ros::Rate loop(500);
+    ros::WallRate loop(500);
     float use_alpha = 1;
     visualization_msgs::MarkerArray voxel_plane;
     voxel_plane.markers.reserve(1000000);

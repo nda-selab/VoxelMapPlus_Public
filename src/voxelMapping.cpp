@@ -3,7 +3,6 @@
 #include "voxelmapplus_util.hpp"
 #include <Eigen/Core>
 #include <common_lib.h>
-#include <csignal>
 #include <cv_bridge/cv_bridge.h>
 #include <fstream>
 #include <geometry_msgs/Vector3.h>
@@ -62,7 +61,6 @@ double ekf_solve_time_mean = 0;
 double map_update_time_mean = 0;
 
 mutex mtx_buffer;
-condition_variable sig_buffer;
 Eigen::Matrix3d last_rot = Eigen::Matrix3d::Zero();
 
 string lid_topic, imu_topic;
@@ -78,7 +76,7 @@ double gyr_cov_scale, acc_cov_scale;
 double last_timestamp_lidar, last_timestamp_imu = -1.0;
 double filter_size_surf_min;
 double map_incremental_time, total_time, scan_match_time, solve_time;
-bool lidar_pushed, flg_reset, flg_exit = false;
+bool lidar_pushed, flg_reset;
 bool dense_map_en = true;
 
 deque<PointCloudXYZI::Ptr> lidar_surf_buffer;
@@ -104,12 +102,6 @@ geometry_msgs::PoseStamped msg_body_pose;
 
 shared_ptr<Preprocess> p_pre(new Preprocess());
 shared_ptr<ImuProcess> p_imu;
-
-void SigHandle(int sig) {
-    flg_exit = true;
-    ROS_WARN("catch sig %d", sig);
-    sig_buffer.notify_all();
-}
 
 const bool var_contrast(pointWithCov &x, pointWithCov &y) {
     return (x.cov.diagonal().norm() < y.cov.diagonal().norm());
@@ -173,7 +165,6 @@ void standard_pcl_cbk(const sensor_msgs::PointCloud2::ConstPtr &msg) {
     last_timestamp_lidar = msg->header.stamp.toSec();
 
     mtx_buffer.unlock();
-    sig_buffer.notify_all();
 }
 
 // 接收livox消息，加入buffer并开锁
@@ -190,7 +181,6 @@ void livox_pcl_cbk(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
     time_buffer.push_back(msg->header.stamp.toSec());
     last_timestamp_lidar = msg->header.stamp.toSec();
     mtx_buffer.unlock();
-    sig_buffer.notify_all();
 }
 
 // 接收imu消息，加入buffer并开锁
@@ -208,7 +198,6 @@ void imu_cbk(const sensor_msgs::Imu::ConstPtr &msg_in) {
 
     imu_buffer.push_back(msg);
     mtx_buffer.unlock();
-    sig_buffer.notify_all();
 }
 
 // 将异步的imu与Lidar进行打包
@@ -526,9 +515,8 @@ int main(int argc, char **argv) {
         fp_kitti = fopen(result_path.c_str(), "w");
     }
 
-    signal(SIGINT, SigHandle);
-    ros::Rate rate(5000);
-    bool status = ros::ok();
+    // Keep shutdown responsive even when rosbag stops publishing /clock.
+    ros::WallRate rate(5000);
 
     // for Plane Map
     bool init_map = false;
@@ -540,10 +528,7 @@ int main(int argc, char **argv) {
     ofstream foutC;
     foutC.open("/home/yyf/ws4voxelmapplus/datas/s02_time.txt");
 
-    while (status) {
-        if (flg_exit) {
-            break;
-        }
+    while (ros::ok()) {
         ros::spinOnce();
 
         /*** 1.Sync Package ***/
@@ -1010,7 +995,6 @@ int main(int argc, char **argv) {
 
             scanIdx++;
         }
-        status = ros::ok();
         rate.sleep();
     }
     return 0;
